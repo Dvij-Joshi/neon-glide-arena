@@ -407,11 +407,20 @@ function render() {
     if (isHost) {
         // Friction / Movement
         puck.x += puck.vx; puck.y += puck.vy;
-        puck.vx *= 0.99; puck.vy *= 0.99;
+        puck.vx *= 0.985; puck.vy *= 0.985; // Heavier friction
+
+        // SPEED CLAMP
+        const speed = Math.sqrt(puck.vx * puck.vx + puck.vy * puck.vy);
+        const MAX_SPEED = 15;
+        if (speed > MAX_SPEED) {
+            const ratio = MAX_SPEED / speed;
+            puck.vx *= ratio;
+            puck.vy *= ratio;
+        }
 
         // Walls
-        if (puck.y - puck.radius < 0) { puck.y = puck.radius; puck.vy *= -1; }
-        if (puck.y + puck.radius > h) { puck.y = h - puck.radius; puck.vy *= -1; }
+        if (puck.y - puck.radius < 0) { puck.y = puck.radius; puck.vy *= -0.8; }
+        if (puck.y + puck.radius > h) { puck.y = h - puck.radius; puck.vy *= -0.8; }
 
         // Goals
         let goal = 0;
@@ -447,11 +456,20 @@ function render() {
         // Only simulate physics if not recently hit (avoid fighting server)
         if (Date.now() - puck.lastHitTime > 200) {
             puck.x += puck.vx; puck.y += puck.vy;
-            puck.vx *= 0.99; puck.vy *= 0.99;
+            puck.vx *= 0.985; puck.vy *= 0.985; // Match Host physics
+
+            // Speed Clamp (Local visual)
+            const speed = Math.sqrt(puck.vx * puck.vx + puck.vy * puck.vy);
+            const MAX_SPEED = 15;
+            if (speed > MAX_SPEED) {
+                const ratio = MAX_SPEED / speed;
+                puck.vx *= ratio;
+                puck.vy *= ratio;
+            }
 
             // Wall bounce (visual)
-            if (puck.y - puck.radius < 0) { puck.y = puck.radius; puck.vy *= -1; }
-            if (puck.y + puck.radius > h) { puck.y = h - puck.radius; puck.vy *= -1; }
+            if (puck.y - puck.radius < 0) { puck.y = puck.radius; puck.vy *= -0.8; }
+            if (puck.y + puck.radius > h) { puck.y = h - puck.radius; puck.vy *= -0.8; }
 
             // GOAL CLAIMING for Guests
             let goal = 0;
@@ -498,7 +516,7 @@ function checkCollision(paddle, puck) {
 
     if (dist < minDist) {
         const angle = Math.atan2(dy, dx);
-        const force = 15; // Set speed
+        const force = 12; // Reduced from 15 for heavier feel
 
         // Push out
         const overlap = minDist - dist;
