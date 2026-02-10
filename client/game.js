@@ -48,6 +48,13 @@ let gameActive = false;
 let isHost = false;
 let currentRoomCode = null;
 
+// --- Network Configuration ---
+const NETWORK_TICK_RATE = 30; // ms between updates (approx 33Hz)
+let lastNetworkUpdate = 0;
+
+// Interpolation Setup
+const INTERPOLATION_FACTOR = 0.3; // Correct 30% per frame
+
 // --- Event Listeners ---
 
 // Navigation
@@ -148,24 +155,22 @@ socket.on('timerUpdate', (seconds) => {
 
 socket.on('puckUpdate', (data) => {
     // Sync puck from server (Host authority)
-    // BUT only if we haven't hit it recently ourselves to avoid jitter?
     const now = Date.now();
     if (!isHost && (now - puck.lastHitTime > 200)) {
-        // Sync if not recently hit locally
-        puck.x = data.x;
-        puck.y = data.y;
+        // Snap for now, or simple smoothing could be added
+        // To reduce jitter, maybe only update if diff is significant?
+        const dx = data.x - puck.x;
+        const dy = data.y - puck.y;
+        if (Math.sqrt(dx * dx + dy * dy) > 10) { // Only update if noticeable diff
+            puck.x = data.x;
+            puck.y = data.y;
+        }
         puck.vx = data.vx;
         puck.vy = data.vy;
-    } else if (isHost) {
-        // Host might receive override from client hit? No, Host is authority.
-        // Wait, if client claims hit, Host updates.
     }
 });
 
 socket.on('clientPuckHit', (data) => {
-    // data: { x, y, vx, vy }
-    // Trust the hitter!
-    // Update local puck immediately
     puck.x = data.x;
     puck.y = data.y;
     puck.vx = data.vx;
@@ -175,8 +180,9 @@ socket.on('clientPuckHit', (data) => {
 
 socket.on('opponentMove', (data) => {
     if (paddles[data.id]) {
-        paddles[data.id].x = data.x;
-        paddles[data.id].y = data.y;
+        // Set target for interpolation
+        paddles[data.id].targetX = data.x;
+        paddles[data.id].targetY = data.y;
     }
 });
 
@@ -267,8 +273,16 @@ class Paddle {
     constructor(id, x, y, side, color) {
         this.id = id; this.x = x; this.y = y; this.side = side; this.color = color;
         this.radius = 25;
+        this.targetX = x;
+        this.targetY = y;
     }
     draw(ctx) {
+        // Interpolation
+        if (this.id !== socket.id) {
+            this.x += (this.targetX - this.x) * INTERPOLATION_FACTOR;
+            this.y += (this.targetY - this.y) * INTERPOLATION_FACTOR;
+        }
+
         ctx.beginPath();
         ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
         ctx.fillStyle = this.color;
@@ -370,7 +384,13 @@ function render() {
         } else {
             if (p.x < w / 2 + p.radius) p.x = w / 2 + p.radius;
         }
-        socket.emit('playerMove', { id: socket.id, x: p.x, y: p.y });
+
+        // NETWORK THROTTLING
+        const now = Date.now();
+        if (now - lastNetworkUpdate > NETWORK_TICK_RATE) {
+            socket.emit('playerMove', { id: socket.id, x: p.x, y: p.y });
+            lastNetworkUpdate = now;
+        }
 
         // CLIENT-SIDE HIT PREDICTION
         // Check collision with MY paddle immediately
