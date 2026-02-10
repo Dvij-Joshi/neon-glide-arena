@@ -2,274 +2,175 @@ const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 const socket = io();
 
-// Game Configuration (Dynamic)
+// UI Elements
+const menuOverlay = document.getElementById('menu-overlay');
+const mainMenu = document.getElementById('main-menu');
+const createGameMenu = document.getElementById('create-game-menu');
+const joinGameMenu = document.getElementById('join-game-menu');
+const lobbyUI = document.getElementById('lobby-ui');
+const gameUI = document.getElementById('game-ui');
+
+// Buttons & Inputs
+const btnCreateMenu = document.getElementById('btn-create-menu');
+const btnJoinMenu = document.getElementById('btn-join-menu');
+const btnBackMain = document.getElementById('btn-back-main');
+const btnBackMain2 = document.getElementById('btn-back-main-2');
+const btnJoinAction = document.getElementById('btn-join-action');
+const joinCodeInput = document.getElementById('join-code-input');
+const joinNameInput = document.getElementById('join-name-input');
+const btnStartGame = document.getElementById('btn-start-game');
+const hostControls = document.getElementById('host-controls');
+const waitingMsg = document.getElementById('waiting-msg');
+
+// Lobby Elements
+const lobbyRoomCode = document.getElementById('lobby-room-code');
+const listTeamLeft = document.getElementById('list-team-left');
+const listTeamRight = document.getElementById('list-team-right');
+const btnJoinLeft = document.querySelector('button[data-team="left"]');
+const btnJoinRight = document.querySelector('button[data-team="right"]');
+
+// Game Elements
+const timerDisplay = document.getElementById('timer-display');
+const p1ScoreEl = document.getElementById('p1-score');
+const p2ScoreEl = document.getElementById('p2-score');
+const teamAPlayersList = document.getElementById('team-a-players');
+const teamBPlayersList = document.getElementById('team-b-players');
+
+
+// Game State
 let goalWidth = 200;
-
-const TEAM_A_COLORS = ['#8B0000', '#FFC0CB', '#008000']; // Dark Red, Pink, Green
-const TEAM_B_COLORS = ['#FF0000', '#6699CC', '#FFFF00']; // Red, Blue, Yellow
-
-class Puck {
-    constructor(x, y) {
-        this.x = x;
-        this.y = y;
-        this.radius = 15;
-        this.vx = 0;
-        this.vy = 0;
-        this.friction = 0.99;
-        this.maxSpeed = 15;
-    }
-
-    update(width, height) {
-        this.x += this.vx;
-        this.y += this.vy;
-        this.vx *= this.friction;
-        this.vy *= this.friction;
-
-        // Top/Bottom Wall Collision (Bounce)
-        if (this.y - this.radius < 0) {
-            this.y = this.radius;
-            this.vy *= -1;
-        }
-        if (this.y + this.radius > height) {
-            this.y = height - this.radius;
-            this.vy *= -1;
-        }
-
-        // Goals or Left/Right walls
-        // Left Wall (x=0)
-        if (this.x - this.radius < 0) {
-            if (this.y > height / 2 - goalWidth / 2 && this.y < height / 2 + goalWidth / 2) {
-                return 2; // Goal for Right Team (scored in left goal)
-            } else {
-                this.x = this.radius;
-                this.vx *= -1;
-            }
-        }
-        // Right Wall (x=width)
-        if (this.x + this.radius > width) {
-            if (this.y > height / 2 - goalWidth / 2 && this.y < height / 2 + goalWidth / 2) {
-                return 1; // Goal for Left Team (scored in right goal)
-            } else {
-                this.x = width - this.radius;
-                this.vx *= -1;
-            }
-        }
-        return 0; // No goal
-    }
-
-    draw(ctx) {
-        ctx.beginPath();
-        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
-        ctx.fillStyle = '#000'; // Puck is black in sketch
-        ctx.strokeStyle = '#fff'; // White outline for visibility on dark/neon? Or just black?
-        // Sketch: Black puck. Background is white in sketch but dark in my theme.
-        // If theme is dark, black puck is invisible.
-        // I will keep it White for now to match the Neon theme, OR make it Black with White Glow.
-        ctx.fillStyle = '#000';
-        ctx.shadowBlur = 10;
-        ctx.shadowColor = '#fff';
-        ctx.fill();
-        ctx.lineWidth = 2;
-        ctx.stroke();
-        ctx.closePath();
-    }
-}
-
-class Paddle {
-    constructor(id, x, y, side, color) {
-        this.id = id;
-        this.x = x;
-        this.y = y;
-        this.side = side; // 'left' or 'right'
-        this.radius = 25;
-        this.color = color;
-    }
-
-    update(targetX, targetY, width, height) {
-        this.x = targetX;
-        this.y = targetY;
-
-        // Constrain to Arena
-        if (this.y - this.radius < 0) this.y = this.radius;
-        if (this.y + this.radius > height) this.y = height - this.radius;
-
-        // Constrain to Half
-        if (this.side === 'left') {
-            if (this.x - this.radius < 0) this.x = this.radius;
-            if (this.x + this.radius > width / 2) this.x = width / 2 - this.radius;
-        } else {
-            if (this.x - this.radius < width / 2) this.x = width / 2 + this.radius;
-            if (this.x + this.radius > width) this.x = width - this.radius;
-        }
-    }
-
-    draw(ctx) {
-        ctx.beginPath();
-        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
-        ctx.fillStyle = this.color;
-        ctx.shadowBlur = 20;
-        ctx.shadowColor = this.color;
-        ctx.fill();
-        ctx.lineWidth = 0; // No outline needed if solid color
-        ctx.closePath();
-    }
-}
-
-// Global State
-let paddles = {}; // map socketId -> Paddle
-let puck = new Puck(600, 300); // Default cente
+const TEAM_A_COLORS = ['#8B0000', '#FFC0CB', '#008000', '#ff00ff'];
+const TEAM_B_COLORS = ['#FF0000', '#6699CC', '#FFFF00', '#00ffff'];
+let paddles = {};
+let puck = { x: 0, y: 0, radius: 15, vx: 0, vy: 0, lastHitTime: 0 };
 let mySide = null;
 let gameActive = false;
 let isHost = false;
+let currentRoomCode = null;
 
-// Input
-let mouseX = 0;
-let mouseY = 0;
+// --- Event Listeners ---
 
-canvas.addEventListener('mousemove', (e) => {
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-
-    mouseX = (e.clientX - rect.left) * scaleX;
-    mouseY = (e.clientY - rect.top) * scaleY;
+// Navigation
+btnCreateMenu.addEventListener('click', () => {
+    mainMenu.style.display = 'none';
+    createGameMenu.style.display = 'flex';
 });
 
-
-function resetPuck() {
-    puck.x = canvas.width / 2;
-    puck.y = canvas.height / 2;
-    puck.vx = 0;
-    puck.vy = 0;
-}
-
-function checkCollision(paddle, puck) {
-    const dx = puck.x - paddle.x;
-    const dy = puck.y - paddle.y;
-    const distance = Math.sqrt(dx * dx + dy * dy);
-    const minDistance = paddle.radius + puck.radius;
-
-    if (distance < minDistance) {
-        const angle = Math.atan2(dy, dx);
-        const overlap = minDistance - distance;
-        puck.x += Math.cos(angle) * overlap;
-        puck.y += Math.sin(angle) * overlap;
-
-        const speed = Math.sqrt(puck.vx * puck.vx + puck.vy * puck.vy);
-        const newSpeed = Math.min(speed + 10, puck.maxSpeed);
-
-        puck.vx = Math.cos(angle) * newSpeed;
-        puck.vy = Math.sin(angle) * newSpeed;
-        return true;
-    }
-    return false;
-}
-
-// Socket UI
-const joinBtn = document.getElementById('join-btn');
-const usernameInput = document.getElementById('username');
-const lobbyUI = document.getElementById('lobby-ui');
-const playerList = document.getElementById('player-list');
-const waitingMsg = document.getElementById('waiting-msg');
-// Scoreboard Elements
-const p1ScoreEl = document.getElementById('p1-score'); // Team A (Left)
-const p2ScoreEl = document.getElementById('p2-score'); // Team B (Right)
-
-const practiceBtn = document.getElementById('practice-btn');
-
-joinBtn.addEventListener('click', () => {
-    const username = usernameInput.value;
-    if (username) {
-        socket.emit('joinGame', username);
-        joinBtn.disabled = true;
-        joinBtn.innerText = "JOINING...";
-        usernameInput.disabled = true;
-        practiceBtn.disabled = true;
-    }
+btnJoinMenu.addEventListener('click', () => {
+    mainMenu.style.display = 'none';
+    joinGameMenu.style.display = 'flex';
 });
 
-practiceBtn.addEventListener('click', () => {
-    const username = usernameInput.value || "Guest";
-    socket.emit('joinPractice', username);
-    joinBtn.disabled = true;
-    practiceBtn.disabled = true;
-    practiceBtn.innerText = "STARTING...";
-    usernameInput.disabled = true;
-});
-
-// Networking
-socket.on('gameJoined', (data) => {
-    mySide = data.side;
-    console.log("Joined as " + mySide);
-    waitingMsg.style.display = 'block';
-});
-
-socket.on('playerUpdate', (players) => {
-    // Update Lobby List
-    playerList.innerHTML = '';
-    players.forEach(p => {
-        const li = document.createElement('li');
-        li.textContent = `${p.username} [${p.side.toUpperCase()}]`;
-        if (p.id === socket.id) li.style.color = '#0ff';
-        playerList.appendChild(li);
+[btnBackMain, btnBackMain2].forEach(btn => {
+    btn.addEventListener('click', () => {
+        createGameMenu.style.display = 'none';
+        joinGameMenu.style.display = 'none';
+        mainMenu.style.display = 'flex';
     });
 });
 
+// Mode Selection (Host)
+document.querySelectorAll('.mode-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        const mode = btn.dataset.mode; // '1v1', '2v2', etc.
+        socket.emit('createRoom', mode);
+    });
+});
+
+// Join Game
+btnJoinAction.addEventListener('click', () => {
+    const code = joinCodeInput.value.toUpperCase();
+    const name = joinNameInput.value || "Player";
+    if (code.length === 4) {
+        socket.emit('joinRoom', { code, name });
+    } else {
+        alert("Please enter a valid 4-character code.");
+    }
+});
+
+// Team Selection
+btnJoinLeft.addEventListener('click', () => {
+    socket.emit('switchTeam', { room: currentRoomCode, team: 'left' });
+});
+btnJoinRight.addEventListener('click', () => {
+    socket.emit('switchTeam', { room: currentRoomCode, team: 'right' });
+});
+
+// Start Game
+btnStartGame.addEventListener('click', () => {
+    socket.emit('startGame', currentRoomCode);
+});
+
+// --- Socket Handling ---
+
+socket.on('roomCreated', (data) => {
+    // data: { code, hostId }
+    currentRoomCode = data.code;
+    isHost = true;
+    showLobby();
+});
+
+socket.on('roomJoined', (data) => {
+    // data: { code, playerId }
+    currentRoomCode = data.code;
+    isHost = (data.playerId === data.hostId); // Check if I am host (re-join case?)
+    showLobby();
+});
+
+socket.on('lobbyUpdate', (room) => {
+    // room: { players: [], config: {}, ... }
+    updateLobbyUI(room);
+});
+
 socket.on('gameStart', (data) => {
-    console.log("Game Starting with config:", data.config);
+    // data: { config: { width, height, goalWidth }, players: [] }
     gameActive = true;
+    menuOverlay.style.display = 'none'; // Hide all menus
+    gameUI.style.display = 'flex';      // Show Game UI
 
-    // Hide Lobby
-    lobbyUI.style.display = 'none';
-    // Scoreboard is always visible in sidebar now
-
-    // Resize Board
+    // Config
     canvas.width = data.config.width;
     canvas.height = data.config.height;
     goalWidth = data.config.goalWidth;
 
-    // Initialize Paddles
-    paddles = {};
-    const players = data.players;
+    // Initialize Objects
+    initGameObjects(data.players);
+    if (players[0].id === socket.id) isHost = true; // Re-confirm host
 
-    const leftPlayers = players.filter(p => p.side === 'left');
-    const rightPlayers = players.filter(p => p.side === 'right');
-
-    players.forEach(p => {
-        let x, y, color;
-        if (p.side === 'left') {
-            const index = leftPlayers.findIndex(lp => lp.id === p.id);
-            color = TEAM_A_COLORS[index % TEAM_A_COLORS.length];
-            // Position: 1st=Goalie, others forward
-            if (index === 0) {
-                x = 100; y = canvas.height / 2;
-            } else {
-                x = 300; y = (canvas.height / (leftPlayers.length)) * index; // Simple vertical distribution
-            }
-        } else {
-            const index = rightPlayers.findIndex(rp => rp.id === p.id);
-            color = TEAM_B_COLORS[index % TEAM_B_COLORS.length];
-            if (index === 0) {
-                x = canvas.width - 100; y = canvas.height / 2;
-            } else {
-                x = canvas.width - 300; y = (canvas.height / (rightPlayers.length)) * index;
-            }
-        }
-        paddles[p.id] = new Paddle(p.id, x, y, p.side, color);
-    });
-
-    if (players[0].id === socket.id) {
-        isHost = true;
-    } else {
-        isHost = false;
-    }
-
-    resetPuck();
+    requestAnimationFrame(render);
 });
 
-socket.on('scoreUpdate', (scores) => {
-    p1ScoreEl.innerText = scores.left;
-    p2ScoreEl.innerText = scores.right;
+socket.on('timerUpdate', (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    timerDisplay.innerText = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+});
+
+socket.on('puckUpdate', (data) => {
+    // Sync puck from server (Host authority)
+    // BUT only if we haven't hit it recently ourselves to avoid jitter?
+    const now = Date.now();
+    if (!isHost && (now - puck.lastHitTime > 200)) {
+        // Sync if not recently hit locally
+        puck.x = data.x;
+        puck.y = data.y;
+        puck.vx = data.vx;
+        puck.vy = data.vy;
+    } else if (isHost) {
+        // Host might receive override from client hit? No, Host is authority.
+        // Wait, if client claims hit, Host updates.
+    }
+});
+
+socket.on('clientPuckHit', (data) => {
+    // data: { x, y, vx, vy }
+    // Trust the hitter!
+    // Update local puck immediately
+    puck.x = data.x;
+    puck.y = data.y;
+    puck.vx = data.vx;
+    puck.vy = data.vy;
+    puck.lastHitTime = Date.now();
 });
 
 socket.on('opponentMove', (data) => {
@@ -279,171 +180,339 @@ socket.on('opponentMove', (data) => {
     }
 });
 
-socket.on('puckUpdate', (data) => {
-    if (!isHost) {
-        puck.x = data.x;
-        puck.y = data.y;
-        puck.vx = data.vx;
-        puck.vy = data.vy;
+socket.on('scoreUpdate', (scores) => {
+    p1ScoreEl.innerText = scores.left;
+    p2ScoreEl.innerText = scores.right;
+});
+
+socket.on('gameOver', (result) => {
+    alert("GAME OVER! Winner: " + result.winner);
+    location.reload(); // Simple reset for now
+});
+
+
+// --- Helper Functions ---
+
+function showLobby() {
+    createGameMenu.style.display = 'none';
+    joinGameMenu.style.display = 'none';
+    lobbyUI.style.display = 'flex';
+    lobbyRoomCode.innerText = `CODE: ${currentRoomCode}`;
+}
+
+function updateLobbyUI(room) {
+    listTeamLeft.innerHTML = '';
+    listTeamRight.innerHTML = '';
+
+    const leftPlayers = room.players.filter(p => p.side === 'left');
+    const rightPlayers = room.players.filter(p => p.side === 'right');
+
+    leftPlayers.forEach(p => addPlayerToLobbyList(listTeamLeft, p));
+    rightPlayers.forEach(p => addPlayerToLobbyList(listTeamRight, p));
+
+    // Host Controls
+    if (room.hostId === socket.id) {
+        hostControls.style.display = 'block';
+        waitingMsg.style.display = 'none';
+    } else {
+        hostControls.style.display = 'none';
+        waitingMsg.style.display = 'block';
     }
+}
+
+function addPlayerToLobbyList(list, player) {
+    const li = document.createElement('li');
+    li.className = 'lobby-player-item';
+    li.innerText = player.username;
+    if (player.id === socket.id) {
+        li.classList.add('lobby-player-me');
+        li.innerText += " (YOU)";
+        mySide = player.side;
+    }
+    list.appendChild(li);
+}
+
+// --- Game Logic ---
+
+class PuckClass { // Only used by Host (legacy reference in case needed)
+    constructor() {
+        this.x = 0; this.y = 0; this.vx = 0; this.vy = 0;
+        this.radius = 15;
+        this.maxSpeed = 15;
+        this.friction = 0.99;
+    }
+    update(w, h) {
+        this.x += this.vx; this.y += this.vy;
+        this.vx *= this.friction; this.vy *= this.friction;
+
+        // Bounce Top/Bottom
+        if (this.y - this.radius < 0) { this.y = this.radius; this.vy *= -1; }
+        if (this.y + this.radius > h) { this.y = h - this.radius; this.vy *= -1; }
+
+        // Goals
+        if (this.x - this.radius < 0) {
+            if (this.y > h / 2 - goalWidth / 2 && this.y < h / 2 + goalWidth / 2) return 2; // Right Scores
+            else { this.x = this.radius; this.vx *= -1; }
+        }
+        if (this.x + this.radius > w) {
+            if (this.y > h / 2 - goalWidth / 2 && this.y < h / 2 + goalWidth / 2) return 1; // Left Scores
+            else { this.x = w - this.radius; this.vx *= -1; }
+        }
+        return 0;
+    }
+}
+// Note: We use the global 'puck' object now, not PuckClass instance directly in loop, but keeping logic consistent.
+
+class Paddle {
+    constructor(id, x, y, side, color) {
+        this.id = id; this.x = x; this.y = y; this.side = side; this.color = color;
+        this.radius = 25;
+    }
+    draw(ctx) {
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+        ctx.fillStyle = this.color;
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = this.color;
+        ctx.fill();
+        ctx.closePath();
+    }
+}
+
+let players = [];
+
+function initGameObjects(playerData) {
+    players = playerData;
+    paddles = {};
+
+    // Sort players to assign consistent colors/positions
+    const leftP = players.filter(p => p.side === 'left');
+    const rightP = players.filter(p => p.side === 'right');
+
+    players.forEach(p => {
+        let x, y, color;
+        if (p.side === 'left') {
+            const idx = leftP.findIndex(x => x.id === p.id);
+            color = TEAM_A_COLORS[idx % TEAM_A_COLORS.length];
+            // Formation: Goalie (0), Defenders/Attackers
+            if (idx === 0) { x = 100; y = canvas.height / 2; }
+            else { x = 300; y = (canvas.height / (leftP.length)) * idx + 50; }
+        } else {
+            const idx = rightP.findIndex(x => x.id === p.id);
+            color = TEAM_B_COLORS[idx % TEAM_B_COLORS.length];
+            if (idx === 0) { x = canvas.width - 100; y = canvas.height / 2; }
+            else { x = canvas.width - 300; y = (canvas.height / (rightP.length)) * idx + 50; }
+        }
+        paddles[p.id] = new Paddle(p.id, x, y, p.side, color);
+    });
+
+    // Populate Sidebar Player Lists
+    updateSidebarList(teamAPlayersList, leftP, TEAM_A_COLORS);
+    updateSidebarList(teamBPlayersList, rightP, TEAM_B_COLORS);
+
+    // Initial Puck Pos
+    puck.x = canvas.width / 2;
+    puck.y = canvas.height / 2;
+}
+
+function updateSidebarList(container, teamPlayers, colors) {
+    container.innerHTML = '';
+    teamPlayers.forEach((p, i) => {
+        const div = document.createElement('div');
+        div.className = 'player-dot';
+        div.style.backgroundColor = colors[i % colors.length];
+        div.title = p.username; // Tooltip
+        container.appendChild(div);
+    });
+}
+
+
+// Input
+let mouseX = 0, mouseY = 0;
+canvas.addEventListener('mousemove', e => {
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    mouseX = (e.clientX - rect.left) * scaleX;
+    mouseY = (e.clientY - rect.top) * scaleY;
 });
 
 function render() {
-    const width = canvas.width;
-    const height = canvas.height;
+    if (!gameActive) return;
 
-    // Clear
-    ctx.fillStyle = '#fff'; // White background as per sketch?
-    // User said "keep the theme as it is". History says "NeonGlide".
-    // Does the diagram show a white board? Yes.
-    // Does "keep the theme as it is" apply to the BOARD or the UI?
-    // "impliement this Structure in the arena, and keep the theme as it is"
-    // Maybe keep the dark background of the webpage, but the ARENA should look like the sketch?
-    // Or keep the neon arena?
-    // If I make the arena white, I lose the neon effect.
-    // I will stick to the previous Dark/Neon theme for the Arena Surface to be safe, relying on the "Keep the theme" instruction.
-    // The sketch structure (Players, Horizontal) is what matters.
+    const w = canvas.width;
+    const h = canvas.height;
+
+    // Draw
     ctx.fillStyle = '#020202';
-    ctx.fillRect(0, 0, width, height);
+    ctx.fillRect(0, 0, w, h);
+    drawGrid(w, h);
 
-    // Grid
-    drawGrid(width, height);
+    ctx.strokeStyle = '#0ff'; ctx.lineWidth = 5; ctx.shadowBlur = 15; ctx.shadowColor = '#0ff';
+    ctx.strokeRect(0, 0, w, h);
 
-    // Board Outline
-    ctx.strokeStyle = '#0ff';
-    ctx.lineWidth = 5;
-    ctx.shadowBlur = 15;
-    ctx.shadowColor = '#0ff';
-    ctx.strokeRect(0, 0, width, height);
+    ctx.fillStyle = '#f00'; ctx.shadowColor = '#f00';
+    ctx.fillRect(0, h / 2 - goalWidth / 2, 5, goalWidth);
+    ctx.fillRect(w - 5, h / 2 - goalWidth / 2, 5, goalWidth);
 
-    // Goals (Left and Right)
-    ctx.fillStyle = '#f00';
-    ctx.shadowColor = '#f00';
-    // Left Goal
-    ctx.fillRect(0, height / 2 - goalWidth / 2, 5, goalWidth);
-    // Right Goal
-    ctx.fillRect(width - 5, height / 2 - goalWidth / 2, 5, goalWidth);
-
-    // Center Line (Vertical)
-    ctx.beginPath();
-    ctx.moveTo(width / 2, 0);
-    ctx.lineTo(width / 2, height);
-    ctx.strokeStyle = '#333';
-    ctx.lineWidth = 2;
-    ctx.shadowBlur = 0;
-    ctx.stroke();
-
-    // Center Circle and Dot
-    ctx.beginPath();
-    ctx.arc(width / 2, height / 2, 50, 0, Math.PI * 2);
-    ctx.strokeStyle = '#333';
-    ctx.stroke();
-    ctx.closePath();
-
-    ctx.beginPath();
-    ctx.arc(width / 2, height / 2, 10, 0, Math.PI * 2);
-    ctx.fillStyle = '#333';
-    ctx.fill();
-    ctx.closePath();
+    ctx.strokeStyle = '#333'; ctx.lineWidth = 2; ctx.shadowBlur = 0;
+    ctx.beginPath(); ctx.moveTo(w / 2, 0); ctx.lineTo(w / 2, h); ctx.stroke();
+    ctx.beginPath(); ctx.arc(w / 2, h / 2, 50, 0, Math.PI * 2); ctx.stroke();
 
 
-    if (gameActive) {
-        // Update My Paddle
-        const myPaddle = paddles[socket.id];
-        if (myPaddle) {
-            myPaddle.update(mouseX, mouseY, width, height);
-            socket.emit('playerMove', { id: socket.id, x: myPaddle.x, y: myPaddle.y });
+    // Logic
+    // 1. My Movement
+    if (paddles[socket.id]) {
+        let p = paddles[socket.id];
+        p.x = mouseX; p.y = mouseY;
+        if (p.side === 'left') {
+            if (p.x > w / 2 - p.radius) p.x = w / 2 - p.radius;
+        } else {
+            if (p.x < w / 2 + p.radius) p.x = w / 2 + p.radius;
+        }
+        socket.emit('playerMove', { id: socket.id, x: p.x, y: p.y });
+
+        // CLIENT-SIDE HIT PREDICTION
+        // Check collision with MY paddle immediately
+        if (checkCollision(p, puck)) {
+            // Collision happened locally!
+            puck.lastHitTime = Date.now();
+            createParticles(puck.x, puck.y, 10, p.color);
+            // Inform everyone
+            socket.emit('clientPuckHit', { x: puck.x, y: puck.y, vx: puck.vx, vy: puck.vy });
+        }
+    }
+
+    // 2. Host Logic (Physics for everything else)
+    if (isHost) {
+        // Friction / Movement
+        puck.x += puck.vx; puck.y += puck.vy;
+        puck.vx *= 0.99; puck.vy *= 0.99;
+
+        // Walls
+        if (puck.y - puck.radius < 0) { puck.y = puck.radius; puck.vy *= -1; }
+        if (puck.y + puck.radius > h) { puck.y = h - puck.radius; puck.vy *= -1; }
+
+        // Goals
+        let goal = 0;
+        if (puck.x - puck.radius < 0) {
+            if (puck.y > h / 2 - goalWidth / 2 && puck.y < h / 2 + goalWidth / 2) goal = 2;
+            else { puck.x = puck.radius; puck.vx *= -1; }
+        }
+        if (puck.x + puck.radius > w) {
+            if (puck.y > h / 2 - goalWidth / 2 && puck.y < h / 2 + goalWidth / 2) goal = 1;
+            else { puck.x = w - puck.radius; puck.vx *= -1; }
         }
 
-        // Draw All Paddles
-        for (const id in paddles) {
-            paddles[id].draw(ctx);
+        if (goal !== 0) {
+            socket.emit('goalScored', goal === 1 ? 'left' : 'right');
+            puck.x = w / 2; puck.y = h / 2; puck.vx = 0; puck.vy = 0;
         }
 
-        // Update Puck (Host only)
-        if (isHost) {
-            const goal = puck.update(width, height);
-            if (goal !== 0) {
-                resetPuck();
-                socket.emit('goalScored', goal === 1 ? 'left' : 'right');
-                createParticles(width / 2, height / 2, 50, '#fff'); // Explosion at center
-            }
-
-            // Check collisions with ALL paddles
-            for (const id in paddles) {
+        // Host Collisions (with other players)
+        for (let id in paddles) {
+            if (id !== socket.id) { // We already checked ours above
                 if (checkCollision(paddles[id], puck)) {
                     createParticles(puck.x, puck.y, 10, paddles[id].color);
+                    // Broadcast update immediately to keep others in sync
+                    socket.emit('puckMove', { x: puck.x, y: puck.y, vx: puck.vx, vy: puck.vy });
                 }
             }
-
-            socket.emit('puckMove', { x: puck.x, y: puck.y, vx: puck.vx, vy: puck.vy });
         }
 
-        // Draw Particles
-        updateParticles();
+        // Periodic Sync
+        socket.emit('puckMove', { x: puck.x, y: puck.y, vx: puck.vx, vy: puck.vy });
+    } else {
+        // Client Logic: Visual update + GOAL CLAIMING
+        // Only simulate physics if not recently hit (avoid fighting server)
+        if (Date.now() - puck.lastHitTime > 200) {
+            puck.x += puck.vx; puck.y += puck.vy;
+            puck.vx *= 0.99; puck.vy *= 0.99;
 
-        // Draw Puck
-        puck.draw(ctx);
+            // Wall bounce (visual)
+            if (puck.y - puck.radius < 0) { puck.y = puck.radius; puck.vy *= -1; }
+            if (puck.y + puck.radius > h) { puck.y = h - puck.radius; puck.vy *= -1; }
+
+            // GOAL CLAIMING for Guests
+            let goal = 0;
+            if (puck.x - puck.radius < 0) {
+                if (puck.y > h / 2 - goalWidth / 2 && puck.y < h / 2 + goalWidth / 2) goal = 2;
+                else { puck.x = puck.radius; puck.vx *= -1; }
+            }
+            if (puck.x + puck.radius > w) {
+                if (puck.y > h / 2 - goalWidth / 2 && puck.y < h / 2 + goalWidth / 2) goal = 1;
+                else { puck.x = w - puck.radius; puck.vx *= -1; }
+            }
+
+            if (goal !== 0) {
+                // We saw a goal! Tell the server.
+                // The server will handle debouncing if multiple people claim it.
+                socket.emit('goalScored', goal === 1 ? 'left' : 'right');
+
+                // Reset locally to avoid spamming (server will correct us soon anyway)
+                puck.x = w / 2; puck.y = h / 2; puck.vx = 0; puck.vy = 0;
+            }
+        }
     }
+
+    // Draw Paddles
+    for (let id in paddles) paddles[id].draw(ctx);
+
+    // Draw Particles
+    updateParticles();
+
+    // Draw Puck
+    ctx.beginPath();
+    ctx.arc(puck.x, puck.y, 15, 0, Math.PI * 2);
+    ctx.fillStyle = '#fff'; ctx.shadowBlur = 10; ctx.shadowColor = '#fff';
+    ctx.fill();
 
     requestAnimationFrame(render);
 }
 
-// Particles
+function checkCollision(paddle, puck) {
+    const dx = puck.x - paddle.x;
+    const dy = puck.y - paddle.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    const minDist = paddle.radius + puck.radius;
+
+    if (dist < minDist) {
+        const angle = Math.atan2(dy, dx);
+        const force = 15; // Set speed
+
+        // Push out
+        const overlap = minDist - dist;
+        puck.x += Math.cos(angle) * overlap;
+        puck.y += Math.sin(angle) * overlap;
+
+        puck.vx = Math.cos(angle) * force;
+        puck.vy = Math.sin(angle) * force;
+        return true;
+    }
+    return false;
+}
+
+// Particles (unchanged)
 let particles = [];
 class Particle {
     constructor(x, y, color) {
-        this.x = x;
-        this.y = y;
-        this.color = color;
+        this.x = x; this.y = y; this.color = color;
         this.radius = Math.random() * 3 + 1;
-        this.vx = (Math.random() - 0.5) * 5;
-        this.vy = (Math.random() - 0.5) * 5;
+        this.vx = (Math.random() - 0.5) * 5; this.vy = (Math.random() - 0.5) * 5;
         this.alpha = 1;
     }
-    update() {
-        this.x += this.vx;
-        this.y += this.vy;
-        this.alpha -= 0.02;
-    }
+    update() { this.x += this.vx; this.y += this.vy; this.alpha -= 0.02; }
     draw(ctx) {
-        ctx.save();
-        ctx.globalAlpha = this.alpha;
-        ctx.fillStyle = this.color;
-        ctx.beginPath();
-        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
+        ctx.save(); ctx.globalAlpha = this.alpha; ctx.fillStyle = this.color;
+        ctx.beginPath(); ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2); ctx.fill(); ctx.restore();
     }
 }
-
-function createParticles(x, y, count, color) {
-    for (let i = 0; i < count; i++) {
-        particles.push(new Particle(x, y, color));
-    }
-}
-
-function updateParticles() {
-    for (let i = particles.length - 1; i >= 0; i--) {
-        particles[i].update();
-        particles[i].draw(ctx);
-        if (particles[i].alpha <= 0) {
-            particles.splice(i, 1);
-        }
-    }
-}
-
+function createParticles(x, y, count, color) { for (let i = 0; i < count; i++) particles.push(new Particle(x, y, color)); }
+function updateParticles() { for (let i = particles.length - 1; i >= 0; i--) { particles[i].update(); particles[i].draw(ctx); if (particles[i].alpha <= 0) particles.splice(i, 1); } }
 function drawGrid(w, h) {
-    ctx.strokeStyle = 'rgba(0, 255, 255, 0.1)';
-    ctx.lineWidth = 1;
-    ctx.shadowBlur = 0;
+    ctx.strokeStyle = 'rgba(0, 255, 255, 0.1)'; ctx.lineWidth = 1; ctx.shadowBlur = 0;
     const gridSize = 50;
-    for (let x = 0; x <= w; x += gridSize) {
-        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
-    }
-    for (let y = 0; y <= h; y += gridSize) {
-        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
-    }
+    for (let x = 0; x <= w; x += gridSize) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke(); }
+    for (let y = 0; y <= h; y += gridSize) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke(); }
 }
-
 render();

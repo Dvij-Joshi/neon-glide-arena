@@ -10,72 +10,110 @@
 
 <body>
     <div class="main-layout">
-        <!-- Sidebar Scoreboard -->
-        <div id="sidebar">
-            <table class="scoreboard-table">
-                <thead>
-                    <tr>
-                        <th colspan="2">Players</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr class="team-header">
-                        <td>Team A</td>
-                        <td>Team B</td>
-                    </tr>
-                    <tr class="player-list-row">
-                        <td id="team-a-players">
-                            <!-- Team A Players (Dark Red, Pink, Green) -->
-                            <div class="player-dot" style="background-color: #8B0000;"></div>
-                            <div class="player-dot" style="background-color: #FFC0CB;"></div>
-                            <div class="player-dot" style="background-color: #008000;"></div>
-                        </td>
-                        <td id="team-b-players">
-                            <!-- Team B Players (Red, Blue, Yellow) -->
-                            <div class="player-dot" style="background-color: #FF0000;"></div>
-                            <div class="player-dot" style="background-color: #6699CC;"></div>
-                            <div class="player-dot" style="background-color: #FFFF00;"></div>
-                        </td>
-                    </tr>
-                </tbody>
-                <thead>
-                    <tr>
-                        <th colspan="2">team score</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr class="score-header">
-                        <td>Team A</td>
-                        <td>Team B</td>
-                    </tr>
-                    <tr class="score-values">
-                        <td id="p1-score">0</td>
-                        <td id="p2-score">0</td>
-                    </tr>
-                </tbody>
-            </table>
+
+        <!-- Main Menu & Lobby System -->
+        <div id="menu-overlay">
+
+            <!-- 1. Main Menu -->
+            <div id="main-menu" class="menu-screen">
+                <h1>NEON GLIDE</h1>
+                <h2>Arena</h2>
+                <button id="btn-create-menu">HOST GAME</button>
+                <button id="btn-join-menu">JOIN GAME</button>
+            </div>
+
+            <!-- 2. Create Game Menu -->
+            <div id="create-game-menu" class="menu-screen" style="display:none;">
+                <h2>HOST GAME</h2>
+                <div class="mode-select">
+                    <button class="mode-btn" data-mode="1v1">1 vs 1</button>
+                    <button class="mode-btn" data-mode="2v2">2 vs 2</button>
+                    <button class="mode-btn" data-mode="3v3">3 vs 3</button>
+                    <button class="mode-btn" data-mode="4v4">4 vs 4</button>
+                </div>
+                <button id="btn-back-main" class="secondary-btn">BACK</button>
+            </div>
+
+            <!-- 3. Join Game Menu -->
+            <div id="join-game-menu" class="menu-screen" style="display:none;">
+                <h2>JOIN GAME</h2>
+                <input type="text" id="join-code-input" placeholder="ENTER ROOM CODE" maxlength="4"
+                    style="text-transform:uppercase;">
+                <input type="text" id="join-name-input" placeholder="YOUR NAME" maxlength="12">
+                <button id="btn-join-action">JOIN</button>
+                <button id="btn-back-main-2" class="secondary-btn">BACK</button>
+            </div>
+
+            <!-- 4. Lobby UI -->
+            <div id="lobby-ui" class="menu-screen" style="display:none;">
+                <h2>LOBBY</h2>
+                <h3 id="lobby-room-code">CODE: ----</h3>
+
+                <div class="lobby-teams">
+                    <div class="team-column" id="lobby-team-left">
+                        <h4>TEAM A (Left)</h4>
+                        <ul id="list-team-left"></ul>
+                        <button class="join-team-btn" data-team="left">JOIN TEAM A</button>
+                    </div>
+                    <div class="team-column" id="lobby-team-right">
+                        <h4>TEAM B (Right)</h4>
+                        <ul id="list-team-right"></ul>
+                        <button class="join-team-btn" data-team="right">JOIN TEAM B</button>
+                    </div>
+                </div>
+
+                <div id="host-controls" style="display:none;">
+                    <button id="btn-start-game">START GAME</button>
+                </div>
+                <div id="waiting-msg">Waiting for host to start...</div>
+            </div>
+
         </div>
 
-        <!-- Game Area -->
-        <div id="game-container">
-            <canvas id="gameCanvas"></canvas>
-            <div id="ui-overlay">
-                <!-- Lobby UI -->
-                <div id="lobby-ui">
-                    <h1>NEON GLIDE</h1>
-                    <h2>Arena</h2>
-                    <input type="text" id="username" placeholder="ENTER CODENAME" maxlength="12">
-                    <ul id="player-list">
-                        <!-- Players will be listed here -->
-                    </ul>
-                    <div id="waiting-msg" style="display:none; color: #888; margin-bottom: 20px;">Waiting for players...
-                    </div>
-                    <button id="join-btn">INITIATE LINK</button>
-                    <button id="practice-btn" style="margin-top: 10px; border-color: #f0f; color: #f0f;">PRACTICE
-                        MODE</button>
-                </div>
+        <!-- 5. Game UI (Hidden until start) -->
+        <div id="game-ui" style="display:none;">
+            <!-- Sidebar Scoreboard -->
+            <div id="sidebar">
+                <div id="timer-display">02:00</div>
+                <table class="scoreboard-table">
+                    <thead>
+                        <tr>
+                            <th colspan="2">Players</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr class="team-header">
+                            <td>Team A</td>
+                            <td>Team B</td>
+                        </tr>
+                        <tr class="player-list-row">
+                            <td id="team-a-players"></td>
+                            <td id="team-b-players"></td>
+                        </tr>
+                    </tbody>
+                    <thead>
+                        <tr>
+                            <th colspan="2">team score</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr class="score-header">
+                            <td>Team A</td>
+                            <td>Team B</td>
+                        </tr>
+                        <tr class="score-values">
+                            <td id="p1-score">0</td>
+                            <td id="p2-score">0</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div id="game-container">
+                <canvas id="gameCanvas"></canvas>
             </div>
         </div>
+
     </div>
     <script src="/socket.io/socket.io.js"></script>
     <script type="module" src="game.js"></script>

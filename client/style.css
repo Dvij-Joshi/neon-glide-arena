@@ -24,6 +24,45 @@ body {
     gap: 20px;
 }
 
+#menu-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 20;
+    pointer-events: none;
+    /* Let clicks pass if no menu */
+}
+
+.menu-screen {
+    pointer-events: auto;
+    background: rgba(0, 0, 0, 0.9);
+    padding: 40px;
+    border: 2px solid #0ff;
+    border-radius: 15px;
+    box-shadow: 0 0 30px rgba(0, 255, 255, 0.2);
+    text-align: center;
+    backdrop-filter: blur(10px);
+    display: flex;
+    /* Flex to center content */
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+    min-width: 400px;
+}
+
+#game-ui {
+    display: flex;
+    gap: 20px;
+    align-items: center;
+    width: 100%;
+    justify-content: center;
+}
+
 #sidebar {
     width: 250px;
     background: rgba(0, 0, 0, 0.8);
@@ -32,9 +71,11 @@ body {
     padding: 10px;
     display: flex;
     flex-direction: column;
-    font-family: 'Arial', sans-serif; /* Sketch looks more standard sans-serif than Orbitron for the table */
+    font-family: 'Arial', sans-serif;
+    /* Sketch looks more standard sans-serif than Orbitron for the table */
     color: #000;
-    background-color: #fff; /* Sketch shows white background for the board, let's stick to theme but adapt layout, OR strictly follow sketch. Sketch has white background. User said "keep the theme". I will make the table look like the sketch (white/black) but maybe keep the outer background dark? NO, "implement this Structure... keep the theme". The theme is NEON. So I should make the SIDEBAR match the NEON theme but use the STRUCTURE of the sketch. */
+    background-color: #fff;
+    /* Sketch shows white background for the board, let's stick to theme but adapt layout, OR strictly follow sketch. Sketch has white background. User said "keep the theme". I will make the table look like the sketch (white/black) but maybe keep the outer background dark? NO, "implement this Structure... keep the theme". The theme is NEON. So I should make the SIDEBAR match the NEON theme but use the STRUCTURE of the sketch. */
 }
 
 /* Re-interpreting "Keep the theme": The game is "NeonGlide". The sketch is "Air Hockey Arena" on a white board.
@@ -51,6 +92,17 @@ body {
     padding: 0;
     font-family: 'Orbitron', sans-serif;
     color: #fff;
+    display: flex;
+    flex-direction: column;
+}
+
+#timer-display {
+    font-size: 3rem;
+    color: #fff;
+    text-align: center;
+    padding: 20px 0;
+    border-bottom: 2px solid #0ff;
+    text-shadow: 0 0 10px #fff;
 }
 
 .scoreboard-table {
@@ -124,20 +176,89 @@ canvas {
     z-index: 10;
 }
 
-/* Lobby Styling */
-#lobby-ui {
-    pointer-events: auto;
-    background: rgba(0, 0, 0, 0.85);
-    padding: 40px;
-    border: 1px solid #0ff;
-    border-radius: 15px;
-    box-shadow:
-        0 0 20px rgba(0, 255, 255, 0.3),
-        inset 0 0 20px rgba(0, 255, 255, 0.1);
-    text-align: center;
-    backdrop-filter: blur(10px);
-    max-width: 400px;
-    width: 90%;
+/* Lobby & Menu Specifics */
+.mode-select {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 15px;
+    margin-bottom: 20px;
+    width: 100%;
+}
+
+.mode-btn {
+    padding: 15px;
+    font-size: 1.2rem;
+}
+
+.lobby-teams {
+    display: flex;
+    gap: 20px;
+    width: 100%;
+    justify-content: center;
+    margin: 20px 0;
+}
+
+.team-column {
+    flex: 1;
+    border: 1px solid #333;
+    padding: 10px;
+    min-height: 200px;
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.team-column h4 {
+    margin: 0 0 10px 0;
+    color: #aaa;
+    border-bottom: 1px solid #555;
+    padding-bottom: 5px;
+}
+
+#lobby-team-left h4 {
+    color: #f0f;
+}
+
+/* Left Team Color hint */
+#lobby-team-right h4 {
+    color: #0ff;
+}
+
+/* Right Team Color hint */
+
+.join-team-btn {
+    width: 100%;
+    padding: 10px;
+    font-size: 0.9rem;
+    margin-top: 10px;
+    border: 1px dashed #555;
+    color: #888;
+}
+
+.join-team-btn:hover {
+    border-style: solid;
+    color: #fff;
+}
+
+.secondary-btn {
+    border-color: #666;
+    color: #aaa;
+}
+
+.secondary-btn:hover {
+    background: #333;
+    color: #fff;
+    box-shadow: none;
+}
+
+.lobby-player-item {
+    padding: 5px;
+    text-align: left;
+    border-bottom: 1px solid #444;
+}
+
+.lobby-player-me {
+    color: #fff;
+    text-shadow: 0 0 5px #fff;
+    font-weight: bold;
 }
 
 h1 {
@@ -208,26 +329,7 @@ button:disabled {
     box-shadow: none;
 }
 
-/* Player List in Lobby */
-#player-list {
-    list-style: none;
-    padding: 0;
-    margin: 20px 0;
-    text-align: left;
-}
-
-#player-list li {
-    padding: 10px;
-    border-bottom: 1px solid #333;
-    color: #aaa;
-    display: flex;
-    justify-content: space-between;
-}
-
-#player-list li.ready {
-    color: #0f0;
-    text-shadow: 0 0 5px #0f0;
-}
+/* Removed Old Player List */
 
 /* Old Scoreboard Removed - New Sidebar handles it */
 
