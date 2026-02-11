@@ -504,14 +504,18 @@ function render() {
             lastNetworkUpdate = now;
         }
 
-        // CLIENT-SIDE HIT PREDICTION
-        // Check collision with MY paddle immediately
-        if (checkCollision(p, puck)) {
-            // Collision happened locally!
-            puck.lastHitTime = Date.now();
+        // CLIENT-SIDE VISUAL FEEDBACK (no physics)
+        // Check if paddle is close to puck for visual feedback only
+        const pdx = puck.x - p.x;
+        const pdy = puck.y - p.y;
+        const pdist = Math.sqrt(pdx * pdx + pdy * pdy);
+        const pminDist = p.radius + puck.radius;
+
+        if (pdist < pminDist && (now - puck.lastHitTime > 100)) {
+            // Show particles immediately for responsiveness
+            puck.lastHitTime = now;
             createParticles(puck.x, puck.y, 10, p.color);
-            // Inform everyone
-            socket.emit('clientPuckHit', { x: puck.x, y: puck.y, vx: puck.vx, vy: puck.vy });
+            // DO NOT calculate physics here! Let server handle it.
         }
     }
 
