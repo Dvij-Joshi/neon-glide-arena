@@ -25,6 +25,7 @@
             <!-- 2. Create Game Menu -->
             <div id="create-game-menu" class="menu-screen" style="display:none;">
                 <h2>HOST GAME</h2>
+                <input type="text" id="host-name-input" placeholder="HOST NAME" maxlength="12">
                 <div class="mode-select">
                     <button class="mode-btn" data-mode="1v1">1 vs 1</button>
                     <button class="mode-btn" data-mode="2v2">2 vs 2</button>
@@ -62,10 +63,26 @@
                     </div>
                 </div>
 
+                <div class="lobby-controls">
+                    <button id="btn-ready-toggle" class="ready-btn">NOT READY</button>
+                </div>
+
                 <div id="host-controls" style="display:none;">
-                    <button id="btn-start-game">START GAME</button>
+                    <button id="btn-start-game" disabled>START GAME (WAITING FOR READY)</button>
                 </div>
                 <div id="waiting-msg">Waiting for host to start...</div>
+            </div>
+
+            <!-- 6. Game Over / MVP Screen -->
+            <div id="game-over-screen" class="menu-screen" style="display:none;">
+                <h1>GAME OVER</h1>
+                <h2 id="winner-text">TEAM A WINS!</h2>
+                <div class="mvp-container">
+                    <h3>MVP</h3>
+                    <div id="mvp-name">Player Name</div>
+                    <div id="mvp-stats">0 Goals</div>
+                </div>
+                <button id="btn-return-menu">RETURN TO MENU</button>
             </div>
 
         </div>

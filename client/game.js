@@ -21,6 +21,13 @@ const joinNameInput = document.getElementById('join-name-input');
 const btnStartGame = document.getElementById('btn-start-game');
 const hostControls = document.getElementById('host-controls');
 const waitingMsg = document.getElementById('waiting-msg');
+const hostNameInput = document.getElementById('host-name-input');
+const btnReadyToggle = document.getElementById('btn-ready-toggle');
+const gameOverScreen = document.getElementById('game-over-screen');
+const winnerText = document.getElementById('winner-text');
+const mvpName = document.getElementById('mvp-name');
+const mvpStats = document.getElementById('mvp-stats');
+const btnReturnMenu = document.getElementById('btn-return-menu');
 
 // Lobby Elements
 const lobbyRoomCode = document.getElementById('lobby-room-code');
@@ -46,6 +53,7 @@ let puck = { x: 0, y: 0, radius: 15, vx: 0, vy: 0, lastHitTime: 0 };
 let mySide = null;
 let gameActive = false;
 let isHost = false;
+let isReady = false;
 let currentRoomCode = null;
 
 // --- Network Configuration ---
@@ -68,11 +76,20 @@ btnJoinMenu.addEventListener('click', () => {
     joinGameMenu.style.display = 'flex';
 });
 
-[btnBackMain, btnBackMain2].forEach(btn => {
+[btnBackMain, btnBackMain2, btnReturnMenu].forEach(btn => {
     btn.addEventListener('click', () => {
+        // Hide all screens
         createGameMenu.style.display = 'none';
         joinGameMenu.style.display = 'none';
+        lobbyUI.style.display = 'none';
+        gameUI.style.display = 'none';
+        gameOverScreen.style.display = 'none';
+        // Show main menu
         mainMenu.style.display = 'flex';
+        // Reset state
+        isReady = false;
+        gameActive = false;
+        updateReadyButton();
     });
 });
 
@@ -80,7 +97,8 @@ btnJoinMenu.addEventListener('click', () => {
 document.querySelectorAll('.mode-btn').forEach(btn => {
     btn.addEventListener('click', () => {
         const mode = btn.dataset.mode; // '1v1', '2v2', etc.
-        socket.emit('createRoom', mode);
+        const hostName = hostNameInput.value.trim() || "Host";
+        socket.emit('createRoom', { mode, hostName });
     });
 });
 
@@ -108,7 +126,16 @@ btnStartGame.addEventListener('click', () => {
     socket.emit('startGame', currentRoomCode);
 });
 
+// Ready Toggle
+btnReadyToggle.addEventListener('click', () => {
+    socket.emit('toggleReady', currentRoomCode);
+});
+
 // --- Socket Handling ---
+
+socket.on('error', (msg) => {
+    alert(msg);
+});
 
 socket.on('roomCreated', (data) => {
     // data: { code, hostId }
@@ -121,6 +148,8 @@ socket.on('roomJoined', (data) => {
     // data: { code, playerId }
     currentRoomCode = data.code;
     isHost = (data.playerId === data.hostId); // Check if I am host (re-join case?)
+    isReady = false; // Reset ready on join/rejoin
+    updateReadyButton();
     showLobby();
 });
 
@@ -191,9 +220,20 @@ socket.on('scoreUpdate', (scores) => {
     p2ScoreEl.innerText = scores.right;
 });
 
-socket.on('gameOver', (result) => {
-    alert("GAME OVER! Winner: " + result.winner);
-    location.reload(); // Simple reset for now
+socket.on('gameOver', (results) => {
+    // results: { winner, score, mvp: { name, goals } }
+    gameActive = false;
+    // Show stats
+    winnerText.innerText = results.winner === 'Draw' ? "IT'S A DRAW!" : `${results.winner} WINS!`;
+    winnerText.style.color = results.winner === 'Team A' ? TEAM_A_COLORS[0] : (results.winner === 'Team B' ? TEAM_B_COLORS[0] : '#fff');
+
+    mvpName.innerText = results.mvp.name;
+    mvpStats.innerText = `${results.mvp.goals} GOALS`;
+
+    // Hide game, show game over
+    gameUI.style.display = 'none';
+    menuOverlay.style.display = 'flex'; // Show overlay
+    gameOverScreen.style.display = 'flex';
 });
 
 
@@ -202,6 +242,7 @@ socket.on('gameOver', (result) => {
 function showLobby() {
     createGameMenu.style.display = 'none';
     joinGameMenu.style.display = 'none';
+    gameOverScreen.style.display = 'none'; // Hide game over screen
     lobbyUI.style.display = 'flex';
     lobbyRoomCode.innerText = `CODE: ${currentRoomCode}`;
 }
@@ -213,29 +254,72 @@ function updateLobbyUI(room) {
     const leftPlayers = room.players.filter(p => p.side === 'left');
     const rightPlayers = room.players.filter(p => p.side === 'right');
 
-    leftPlayers.forEach(p => addPlayerToLobbyList(listTeamLeft, p));
-    rightPlayers.forEach(p => addPlayerToLobbyList(listTeamRight, p));
+    leftPlayers.forEach(p => addPlayerToLobbyList(listTeamLeft, p, room.hostId));
+    rightPlayers.forEach(p => addPlayerToLobbyList(listTeamRight, p, room.hostId));
+
+    // Update My Ready State visually (in case server desync or verify)
+    const myPlayer = room.players.find(p => p.id === socket.id);
+    if (myPlayer) {
+        isReady = myPlayer.ready;
+        updateReadyButton();
+    }
 
     // Host Controls
     if (room.hostId === socket.id) {
         hostControls.style.display = 'block';
         waitingMsg.style.display = 'none';
+
+        // Check if all players ready
+        const allReady = room.players.length > 0 && room.players.every(p => p.ready);
+        const minPlayers = room.players.length >= 2; // Basic check, ideally 1 per side
+
+        btnStartGame.disabled = !allReady || !minPlayers;
+        btnStartGame.innerText = allReady ? "START GAME" : "WAITING FOR READY...";
+        if (!minPlayers) btnStartGame.innerText = "WAITING FOR PLAYERS...";
     } else {
         hostControls.style.display = 'none';
         waitingMsg.style.display = 'block';
     }
 }
 
-function addPlayerToLobbyList(list, player) {
+function addPlayerToLobbyList(list, player, hostId) {
     const li = document.createElement('li');
     li.className = 'lobby-player-item';
-    li.innerText = player.username;
+
+    const nameDiv = document.createElement('div');
+    nameDiv.className = 'player-name-container';
+
+    let nameText = player.username;
     if (player.id === socket.id) {
-        li.classList.add('lobby-player-me');
-        li.innerText += " (YOU)";
+        nameText += " (YOU)";
         mySide = player.side;
     }
+    nameDiv.innerText = nameText;
+
+    if (player.id === hostId) {
+        const hostTag = document.createElement('span');
+        hostTag.className = 'host-tag';
+        hostTag.innerText = "HOST";
+        nameDiv.appendChild(hostTag);
+    }
+
+    const statusDiv = document.createElement('div');
+    statusDiv.className = 'player-ready-status ' + (player.ready ? 'is-ready' : '');
+    statusDiv.innerText = player.ready ? "READY" : "WAITING";
+
+    li.appendChild(nameDiv);
+    li.appendChild(statusDiv);
     list.appendChild(li);
+}
+
+function updateReadyButton() {
+    if (isReady) {
+        btnReadyToggle.innerText = "I AM READY";
+        btnReadyToggle.classList.add('ready-active');
+    } else {
+        btnReadyToggle.innerText = "NOT READY";
+        btnReadyToggle.classList.remove('ready-active');
+    }
 }
 
 // --- Game Logic ---
@@ -272,6 +356,7 @@ class PuckClass { // Only used by Host (legacy reference in case needed)
 class Paddle {
     constructor(id, x, y, side, color) {
         this.id = id; this.x = x; this.y = y; this.side = side; this.color = color;
+        this.username = "Player"; // Default, set later
         this.radius = 25;
         this.targetX = x;
         this.targetY = y;
@@ -290,6 +375,13 @@ class Paddle {
         ctx.shadowColor = this.color;
         ctx.fill();
         ctx.closePath();
+
+        // Draw Name
+        ctx.fillStyle = "#fff";
+        ctx.font = "12px Arial";
+        ctx.textAlign = "center";
+        ctx.shadowBlur = 0;
+        ctx.fillText(this.username, this.x, this.y - 35);
     }
 }
 
@@ -317,7 +409,9 @@ function initGameObjects(playerData) {
             if (idx === 0) { x = canvas.width - 100; y = canvas.height / 2; }
             else { x = canvas.width - 300; y = (canvas.height / (rightP.length)) * idx + 50; }
         }
-        paddles[p.id] = new Paddle(p.id, x, y, p.side, color);
+        const newPaddle = new Paddle(p.id, x, y, p.side, color);
+        newPaddle.username = p.username;
+        paddles[p.id] = newPaddle;
     });
 
     // Populate Sidebar Player Lists
@@ -333,9 +427,11 @@ function updateSidebarList(container, teamPlayers, colors) {
     container.innerHTML = '';
     teamPlayers.forEach((p, i) => {
         const div = document.createElement('div');
-        div.className = 'player-dot';
-        div.style.backgroundColor = colors[i % colors.length];
-        div.title = p.username; // Tooltip
+        div.className = 'player-name-display';
+        div.style.color = colors[i % colors.length];
+        div.style.fontSize = '0.9rem';
+        div.style.marginBottom = '5px';
+        div.innerText = p.username;
         container.appendChild(div);
     });
 }
@@ -378,7 +474,23 @@ function render() {
     // 1. My Movement
     if (paddles[socket.id]) {
         let p = paddles[socket.id];
-        p.x = mouseX; p.y = mouseY;
+
+        // Speed Limit Calculation
+        const dx = mouseX - p.x;
+        const dy = mouseY - p.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const MAX_PLAYER_SPEED = 20; // Limit step size
+
+        if (dist > MAX_PLAYER_SPEED) {
+            const angle = Math.atan2(dy, dx);
+            p.x += Math.cos(angle) * MAX_PLAYER_SPEED;
+            p.y += Math.sin(angle) * MAX_PLAYER_SPEED;
+        } else {
+            p.x = mouseX;
+            p.y = mouseY;
+        }
+
+        // p.x = mouseX; p.y = mouseY; // Old direct assignment
         if (p.side === 'left') {
             if (p.x > w / 2 - p.radius) p.x = w / 2 - p.radius;
         } else {
@@ -407,7 +519,7 @@ function render() {
     if (isHost) {
         // Friction / Movement
         puck.x += puck.vx; puck.y += puck.vy;
-        puck.vx *= 0.985; puck.vy *= 0.985; // Heavier friction
+        puck.vx *= 0.98; puck.vy *= 0.98; // Heavier friction (matched server)
 
         // SPEED CLAMP
         const speed = Math.sqrt(puck.vx * puck.vx + puck.vy * puck.vy);
@@ -419,8 +531,8 @@ function render() {
         }
 
         // Walls
-        if (puck.y - puck.radius < 0) { puck.y = puck.radius; puck.vy *= -0.8; }
-        if (puck.y + puck.radius > h) { puck.y = h - puck.radius; puck.vy *= -0.8; }
+        if (puck.y - puck.radius < 0) { puck.y = puck.radius; puck.vy *= -0.6; } // Less bounce
+        if (puck.y + puck.radius > h) { puck.y = h - puck.radius; puck.vy *= -0.6; }
 
         // Goals
         let goal = 0;
@@ -456,7 +568,7 @@ function render() {
         // Only simulate physics if not recently hit (avoid fighting server)
         if (Date.now() - puck.lastHitTime > 200) {
             puck.x += puck.vx; puck.y += puck.vy;
-            puck.vx *= 0.985; puck.vy *= 0.985; // Match Host physics
+            puck.vx *= 0.98; puck.vy *= 0.98; // Match Host physics
 
             // Speed Clamp (Local visual)
             const speed = Math.sqrt(puck.vx * puck.vx + puck.vy * puck.vy);
@@ -468,8 +580,8 @@ function render() {
             }
 
             // Wall bounce (visual)
-            if (puck.y - puck.radius < 0) { puck.y = puck.radius; puck.vy *= -0.8; }
-            if (puck.y + puck.radius > h) { puck.y = h - puck.radius; puck.vy *= -0.8; }
+            if (puck.y - puck.radius < 0) { puck.y = puck.radius; puck.vy *= -0.6; }
+            if (puck.y + puck.radius > h) { puck.y = h - puck.radius; puck.vy *= -0.6; }
 
             // GOAL CLAIMING for Guests
             let goal = 0;
